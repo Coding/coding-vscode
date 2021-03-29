@@ -1,12 +1,22 @@
 import 'module-alias/register';
 import * as vscode from 'vscode';
+import * as TurndownService from 'turndown';
 
 import { uriHandler, CodingServer } from 'src/codingServer';
 import { Panel } from 'src/panel';
 import { IFileNode, MRTreeDataProvider } from 'src/tree/mrTree';
 import { ReleaseTreeDataProvider } from 'src/tree/releaseTree';
-import { IRepoInfo, IMRWebViewDetail, ISessionData } from 'src/typings/commonTypes';
+import {
+  IRepoInfo,
+  IMRWebViewDetail,
+  ISessionData,
+  ICachedCommentThreads,
+  ICachedCommentController,
+} from 'src/typings/commonTypes';
 import { GitService } from 'src/common/gitService';
+import { MRUriScheme } from 'src/common/contants';
+import { IDiffComment, IMRData, IDiffFile } from 'src/typings/respResult';
+import { replyNote, ReviewComment, makeCommentRangeProvider } from 'src/reviewCommentController';
 
 export async function activate(context: vscode.ExtensionContext) {
   await GitService.init();
@@ -41,6 +51,12 @@ export async function activate(context: vscode.ExtensionContext) {
     treeDataProvider: releaseDataProvider,
     showCollapseAll: true,
   });
+
+  const tdService = new TurndownService();
+  const diffFileData: { [key: string]: IDiffFile } = {};
+  const cachedCommentThreads: ICachedCommentThreads = {};
+  const cachedCommentControllers: ICachedCommentController = {};
+  let selectedMrFile = ``;
 
   context.subscriptions.push(vscode.window.registerUriHandler(uriHandler));
   context.subscriptions.push(
@@ -184,21 +200,127 @@ export async function activate(context: vscode.ExtensionContext) {
     }),
   );
   context.subscriptions.push(
-    vscode.commands.registerCommand(`codingPlugin.showDiff`, async (file: IFileNode) => {
-      const headUri = vscode.Uri.parse(file.path, false).with({
-        // path: `${file.path}.txt`,
-        scheme: `mr`,
-        query: `commit=${file.newSha}&path=${file.path}`,
-      });
-      const parentUri = headUri.with({ query: `commit=${file.oldSha}&path=${file.path}` });
-      await vscode.commands.executeCommand(
-        `vscode.diff`,
-        parentUri,
-        headUri,
-        `${file.name} (Merge Request)`,
-        { preserveFocus: true },
-      );
-    }),
+    vscode.commands.registerCommand(
+      `codingPlugin.showDiff`,
+      async (file: IFileNode, mr: IMRData) => {
+        const curMrFile = `${mr.iid}/${file.path}`;
+        if (selectedMrFile === curMrFile) {
+          return;
+        }
+        selectedMrFile = curMrFile;
+
+        const headUri = vscode.Uri.parse(file.path, false).with({
+          scheme: MRUriScheme,
+          query: `leftSha=${file.oldSha}&rightSha=${file.newSha}&path=${file.path}&right=true&mr=${mr.iid}&id=${mr.id}`,
+        });
+        const parentUri = headUri.with({
+          query: `leftSha=${file.oldSha}&rightSha=${file.newSha}&path=${file.path}&right=false&mr=${mr.iid}&id=${mr.id}`,
+        });
+        await vscode.commands.executeCommand(
+          `vscode.diff`,
+          parentUri,
+          headUri,
+          `${file.name} (Merge Request #${mr.iid})`,
+          { preserveFocus: true },
+        );
+
+        const cacheId = `${mr.iid}/${file.path}`;
+        cachedCommentThreads[cacheId]?.forEach((c) => {
+          c?.dispose();
+        });
+        cachedCommentThreads[cacheId] = [];
+
+        let commentController = cachedCommentControllers[cacheId];
+        if (!commentController) {
+          commentController = vscode.comments.createCommentController(
+            `mr-${mr.iid}`,
+            `mr-${mr.iid}-comment-controller`,
+          );
+          commentController.commentingRangeProvider = {
+            provideCommentingRanges: makeCommentRangeProvider(codingSrv, diffFileData),
+          };
+          cachedCommentControllers[cacheId] = commentController;
+        }
+
+        try {
+          const commentResp = await codingSrv.getMRComments(mr.iid);
+
+          const validComments = (commentResp.data as IDiffComment[][])
+            .filter((i) => {
+              const first = i[0];
+              return !first.outdated && first.path === file.path;
+            }, [])
+            .reduce((ret, i) => {
+              const ident = `${i[0].change_type === 1 ? 'right' : 'left'}-${i[0].position}-${
+                i[0].line
+              }`;
+              ret[ident] = (ret[ident] ?? []).concat(i);
+              return ret;
+            }, {} as { [key: string]: IDiffComment[] });
+
+          Object.values(validComments).forEach((i) => {
+            const root = i[0];
+            const isRight = root.change_type === 1;
+
+            const rootLine = root.diffFile.diffLines[root.diffFile.diffLines.length - 1];
+            const lineNum = isRight ? rootLine.rightNo - 1 : rootLine.leftNo - 1;
+            const range = new vscode.Range(lineNum, 0, lineNum, 0);
+
+            const commentList: vscode.Comment[] = i
+              .sort((a, b) => a.created_at - b.created_at)
+              .map((c) => {
+                const body = new vscode.MarkdownString(tdService.turndown(c.content));
+                body.isTrusted = true;
+                const comment = new ReviewComment(
+                  body,
+                  vscode.CommentMode.Preview,
+                  {
+                    name: `${c.author.name}(${c.author.global_key})`,
+                    iconPath: vscode.Uri.parse(c.author.avatar, false),
+                  },
+                  undefined,
+                  'canDelete',
+                  c.id,
+                );
+
+                return comment;
+              });
+
+            const commentThread = commentController.createCommentThread(
+              isRight ? headUri : parentUri,
+              range,
+              [],
+            );
+            commentThread.comments = commentList;
+            commentThread.collapsibleState = vscode.CommentThreadCollapsibleState.Expanded;
+
+            cachedCommentThreads[cacheId] = (cachedCommentThreads[mr.iid] ?? []).concat(
+              commentThread,
+            );
+          });
+        } finally {
+        }
+      },
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      `codingPlugin.diff.createComment`,
+      async (reply: vscode.CommentReply) => {
+        const cachedThreadId = await replyNote(reply, context, codingSrv, diffFileData);
+        cachedCommentThreads[cachedThreadId].push(reply.thread);
+      },
+    ),
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      `codingPlugin.diff.replyComment`,
+      async (reply: vscode.CommentReply) => {
+        const cachedThreadId = await replyNote(reply, context, codingSrv, diffFileData);
+        cachedCommentThreads[cachedThreadId].push(reply.thread);
+      },
+    ),
   );
 
   if (vscode.window.registerWebviewPanelSerializer) {

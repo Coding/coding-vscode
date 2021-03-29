@@ -2,7 +2,7 @@
   "name": "coding-plugin",
   "displayName": "CODING Merge Requests & Releases",
   "description": "CODING plugin for VS Code.",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "publisher": "coding-net",
   "license": "MIT",
   "engines": {
@@ -60,9 +60,34 @@
         "command": "codingPlugin.switchRepo",
         "title": "Switch repo",
         "category": "Coding plugin"
+      },
+      {
+        "command": "codingPlugin.diff.createComment",
+        "title": "Post comment",
+        "enablement": "!commentIsEmpty"
+      },
+      {
+        "command": "codingPlugin.diff.replyComment",
+        "title": "Reply",
+        "enablement": "!commentIsEmpty"
+      },
+      {
+        "command": "extension.diff.deleteComment",
+        "title": "Delete comment",
+        "#enablement": "!commentIsEmpty"
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "codingPlugin.diff.createComment",
+          "when": "false"
+        },
+        {
+          "command": "codingPlugin.diff.replyComment",
+          "when": "false"
+        }
+      ],
       "view/title": [
         {
           "command": "codingPlugin.newMrDesc",
@@ -73,6 +98,24 @@
           "command": "codingPlugin.refresh",
           "when": "view == mrTreeView",
           "group": "navigation"
+        }
+      ],
+      "comments/commentThread/context": [
+        {
+          "command": "codingPlugin.diff.createComment",
+          "group": "inline",
+          "when": "commentThreadIsEmpty"
+        },
+        {
+          "command": "codingPlugin.diff.replyComment",
+          "group": "inline",
+          "when": "!commentThreadIsEmpty"
+        }
+      ],
+      "comments/comment/title": [
+        {
+          "command": "extension.diff.deleteComment",
+          "when": "comment == editable"
         }
       ]
     },
@@ -128,7 +171,7 @@
     "watch:webviews": "webpack --watch --mode development",
     "lint": "eslint . --ext .ts,.tsx",
     "clean": "rm -rf node_modules/ && yarn install --prod=true --force && rm -rf node_modules/@babel node_modules/@types node_modules/react*",
-    "package": "npx vsce package",
+    "pk": "npx vsce package",
     "release": "npx vsce publish"
   },
   "babel": {
@@ -148,12 +191,14 @@
     "nanoid": "^3.1.20",
     "react": "^17.0.0",
     "react-dom": "^17.0.0",
-    "styled-components": "^5.2.1"
+    "styled-components": "^5.2.1",
+    "turndown": "^7.0.0"
   },
   "devDependencies": {
     "@svgr/webpack": "^5.5.0",
     "@types/react": "^16.9.53",
     "@types/react-dom": "^16.9.8",
+    "@types/turndown": "^5.0.0",
     "@typescript-eslint/eslint-plugin": "^3.0.2",
     "@typescript-eslint/parser": "^3.0.2",
     "babel-plugin-styled-components": "^1.12.0",

@@ -36,13 +36,13 @@ export interface IMRData {
   updated_at: number;
 }
 
-export interface CodingResponse {
+export interface ICodingResponse {
   code: number;
   data?: any;
   msg?: string;
 }
 
-export interface IListResponse<T> extends CodingResponse {
+export interface IListResponse<T> extends ICodingResponse {
   data: {
     list: T[];
     page: number;
@@ -61,7 +61,7 @@ export interface IRepoItem {
   gitSshUrl: string;
 }
 
-export interface IRepoListResponse extends CodingResponse {
+export interface IRepoListResponse extends ICodingResponse {
   data: IRepoItem[];
 }
 
@@ -86,7 +86,7 @@ export interface IMRDiffStat {
   paths: IMRPathItem[];
 }
 
-export interface IMRDiffResponse extends CodingResponse {
+export interface IMRDiffResponse extends ICodingResponse {
   data: {
     isLarge: boolean;
     diffStat: IMRDiffStat;
@@ -141,7 +141,7 @@ export interface IMRDetail {
   can_merge: boolean;
 }
 
-export interface IMRDetailResponse extends CodingResponse {
+export interface IMRDetailResponse extends ICodingResponse {
   data: IMRDetail;
 }
 
@@ -155,7 +155,7 @@ export interface IActivity {
   };
 }
 
-export interface IMRActivitiesResponse extends CodingResponse {
+export interface IMRActivitiesResponse extends ICodingResponse {
   data: IActivity[];
 }
 
@@ -170,7 +170,7 @@ export interface IMRReviewers {
   reviewers: IReviewer[];
 }
 
-export interface IMRReviewersResponse extends CodingResponse {
+export interface IMRReviewersResponse extends ICodingResponse {
   data: IMRReviewers;
 }
 
@@ -197,7 +197,7 @@ export interface ICreateMRBody {
   watchers?: string;
 }
 
-export interface ICreateMRResp extends CodingResponse {
+export interface ICreateMRResp extends ICodingResponse {
   can_edit: boolean;
   can_edit_src_branch: boolean;
   merge_request: IMRDetail;
@@ -214,7 +214,7 @@ export interface IBranchItem {
   status_check: boolean;
 }
 
-export interface IBranchListResp extends CodingResponse {
+export interface IBranchListResp extends ICodingResponse {
   data: IBranchItem[];
 }
 
@@ -237,11 +237,11 @@ export interface IMRContent {
   body_plan: string;
 }
 
-export interface IMRContentResp extends CodingResponse {
+export interface IMRContentResp extends ICodingResponse {
   data: IMRContent;
 }
 
-export interface ICreateCommentResp extends CodingResponse {
+export interface ICreateCommentResp extends ICodingResponse {
   data: IComment;
 }
 
@@ -263,6 +263,109 @@ export interface IMRStatus {
   statuses: IMRStatusItem[];
 }
 
-export interface IMRStatusResp extends CodingResponse {
+export interface IMRStatusResp extends ICodingResponse {
   data: IMRStatus;
+}
+
+export interface IDiffLine {
+  index: number;
+  leftNo: number;
+  rightNo: number;
+  prefix: string;
+  text: string;
+}
+
+export interface IDiffFile {
+  linkRef: string;
+  linkUrl: string;
+  path: string;
+  changeType: string;
+  fileType: string;
+  type: string;
+  pathMD5: string;
+  changeMode: string;
+  oldMode: string;
+  newMode: string;
+  language: string;
+  insertions: number;
+  deletions: number;
+  isChangeInfoValid: boolean;
+  diffLines: IDiffLine[];
+}
+
+export interface IChildComment {
+  id: number;
+  noteable_type: string;
+  noteable_id: number;
+  content: string;
+  outdated: boolean;
+  author: IUserItem;
+  parentId: number;
+  created_at: number;
+  hasResourceReference: boolean;
+}
+
+export interface IDiffComment {
+  id: number;
+  commitId: string;
+  noteable_type: string;
+  noteable_id: number;
+  line: number;
+  change_type: number;
+  position: number;
+  path: string;
+  anchor: string;
+  content: string;
+  outdated: boolean;
+  parentId: number;
+  created_at: number;
+  hasResourceReference: boolean;
+  author: IUserItem;
+  diffFile: IDiffFile;
+}
+
+export interface IActivityComment {
+  id: number;
+  noteable_type: string;
+  noteable_id: number;
+  content: string;
+  outdated: boolean;
+  parentId: number;
+  created_at: number;
+  hasResourceReference: boolean;
+  author: IUserItem;
+  childComments: IChildComment[];
+}
+
+export type IMRComment = IDiffComment | IActivityComment;
+
+export interface IMRCommentResp extends ICodingResponse {
+  data: IMRComment[][];
+}
+
+export interface IFileDiffParam {
+  path: string;
+  base: string;
+  compare: string;
+  mergeRequestId: string;
+}
+
+export interface IFileDiffResp extends ICodingResponse {
+  data: IDiffFile;
+}
+
+export interface ILineNoteResp extends ICodingResponse {
+  data: IDiffComment;
+}
+
+export interface ILineNoteForm {
+  commitId: string;
+  line: number;
+  change_type: number;
+  position: number;
+  path: string;
+  content: string;
+  noteable_type: string;
+  noteable_id: number | string;
+  anchor?: string;
 }

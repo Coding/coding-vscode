@@ -5,7 +5,7 @@ import got from 'got';
 import {
   AuthFailResult,
   AuthSuccessResult,
-  CodingResponse,
+  ICodingResponse,
   IRepoListResponse,
   IMRDiffResponse,
   IMRDetailResponse,
@@ -18,14 +18,20 @@ import {
   IMRContentResp,
   ICreateCommentResp,
   IMRStatusResp,
+  IMRCommentResp,
+  IFileDiffParam,
+  IFileDiffResp,
+  ILineNoteResp,
+  ILineNoteForm,
 } from 'src/typings/respResult';
+
 import { PromiseAdapter, promiseFromEvent, parseQuery, parseCloneUrl } from 'src/common/utils';
 import { GitService } from 'src/common/gitService';
 import { IRepoInfo, ISessionData, TokenType } from 'src/typings/commonTypes';
 import { keychain } from 'src/common/keychain';
 import Logger from 'src/common/logger';
 
-const AUTH_SERVER = `https://x5p7m.csb.app`;
+const AUTH_SERVER = `https://x5p7m.csb.app/`;
 const ClientId = `ff768664c96d04235b1cc4af1e3b37a8`;
 const ClientSecret = `d29ebb32cab8b5f0a643b5da7dcad8d1469312c7`;
 
@@ -219,7 +225,7 @@ export class CodingServer {
 
   public async getUserInfo(team: string, token: string = this._session?.accessToken || ``) {
     try {
-      const result: CodingResponse = await got
+      const result: ICodingResponse = await got
         .get(`https://${team || `codingcorp`}.coding.net/api/current_user`, {
           searchParams: {
             access_token: token,
@@ -266,10 +272,10 @@ export class CodingServer {
     };
   }
 
-  public async getMRList(repo?: string, status?: string): Promise<CodingResponse> {
+  public async getMRList(repo?: string, status?: string): Promise<ICodingResponse> {
     try {
       const { repoApiPrefix } = await this.getApiPrefix();
-      const result: CodingResponse = await got
+      const result: ICodingResponse = await got
         .get(`${repoApiPrefix}/merges/query`, {
           searchParams: {
             status,
@@ -390,10 +396,10 @@ export class CodingServer {
     }
   }
 
-  public async getMRComments(iid: string) {
+  public async getMRComments(iid: string | number) {
     try {
       const { repoApiPrefix } = await this.getApiPrefix();
-      const result: CodingResponse = await got
+      const result: IMRCommentResp = await got
         .get(`${repoApiPrefix}/merge/${iid}/comments`, {
           searchParams: {
             access_token: this._session?.accessToken,
@@ -413,7 +419,7 @@ export class CodingServer {
   public async closeMR(iid: string) {
     try {
       const { repoApiPrefix } = await this.getApiPrefix();
-      const result: CodingResponse = await got
+      const result: ICodingResponse = await got
         .post(`${repoApiPrefix}/merge/${iid}/refuse`, {
           searchParams: {
             access_token: this._session?.accessToken,
@@ -433,7 +439,7 @@ export class CodingServer {
   public async approveMR(iid: string) {
     try {
       const { repoApiPrefix } = await this.getApiPrefix();
-      const result: CodingResponse = await got
+      const result: ICodingResponse = await got
         .post(`${repoApiPrefix}/merge/${iid}/good`, {
           searchParams: {
             access_token: this._session?.accessToken,
@@ -453,7 +459,7 @@ export class CodingServer {
   public async disapproveMR(iid: string) {
     try {
       const { repoApiPrefix } = await this.getApiPrefix();
-      const result: CodingResponse = await got
+      const result: ICodingResponse = await got
         .delete(`${repoApiPrefix}/merge/${iid}/good`, {
           searchParams: {
             access_token: this._session?.accessToken,
@@ -473,7 +479,7 @@ export class CodingServer {
   public async mergeMR(iid: string) {
     try {
       const { repoApiPrefix } = await this.getApiPrefix();
-      const result: CodingResponse = await got
+      const result: ICodingResponse = await got
         .post(`${repoApiPrefix}/merge/${iid}/merge`, {
           searchParams: {
             access_token: this._session?.accessToken,
@@ -496,7 +502,7 @@ export class CodingServer {
   public async updateMRTitle(iid: string, title: string) {
     try {
       const { repoApiPrefix } = await this.getApiPrefix();
-      const result: CodingResponse = await got
+      const result: ICodingResponse = await got
         .put(`${repoApiPrefix}/merge/${iid}/update-title`, {
           searchParams: {
             access_token: this._session?.accessToken,
@@ -626,7 +632,7 @@ export class CodingServer {
 
   public async addMRReviewers(iid: string, ids: number[]): Promise<number[]> {
     const { repoApiPrefix } = await this.getApiPrefix();
-    const tasks: Promise<CodingResponse>[] = ids.map((id) => {
+    const tasks: Promise<ICodingResponse>[] = ids.map((id) => {
       return got
         .post(`${repoApiPrefix}/merge/${iid}/reviewers`, {
           searchParams: {
@@ -636,7 +642,7 @@ export class CodingServer {
         })
         .json();
     });
-    const result: PromiseSettledResult<CodingResponse>[] = await Promise.allSettled(tasks);
+    const result: PromiseSettledResult<ICodingResponse>[] = await Promise.allSettled(tasks);
     const fulfilled = ids.reduce((res, cur, idx) => {
       if (result[idx].status === `fulfilled`) {
         res = res.concat(cur);
@@ -649,7 +655,7 @@ export class CodingServer {
 
   public async removeMRReviewers(iid: string, ids: number[]): Promise<number[]> {
     const { repoApiPrefix } = await this.getApiPrefix();
-    const tasks: Promise<CodingResponse>[] = ids.map((id) => {
+    const tasks: Promise<ICodingResponse>[] = ids.map((id) => {
       return got
         .delete(`${repoApiPrefix}/merge/${iid}/reviewers`, {
           searchParams: {
@@ -659,7 +665,7 @@ export class CodingServer {
         })
         .json();
     });
-    const result: PromiseSettledResult<CodingResponse>[] = await Promise.allSettled(tasks);
+    const result: PromiseSettledResult<ICodingResponse>[] = await Promise.allSettled(tasks);
     const fulfilled = ids.reduce((res, cur, idx) => {
       if (result[idx].status === `fulfilled`) {
         res = res.concat(cur);
@@ -709,6 +715,52 @@ export class CodingServer {
         return Promise.reject(resp);
       }
 
+      return resp;
+    } catch (e) {
+      return Promise.reject(e);
+    }
+  }
+
+  public async fetchFileDiffs(param: IFileDiffParam) {
+    try {
+      const { repoApiPrefix } = await this.getApiPrefix();
+      const resp: IFileDiffResp = await got
+        .get(`${repoApiPrefix}/compare_with_path`, {
+          searchParams: {
+            access_token: this._session?.accessToken,
+            base: param.base,
+            compare: param.compare,
+            path: encodeURIComponent(param.path),
+            mergeRequestId: param.mergeRequestId,
+          },
+        })
+        .json();
+
+      if (resp.code) {
+        return Promise.reject(resp);
+      }
+
+      return resp;
+    } catch (e) {
+      return Promise.reject(e);
+    }
+  }
+
+  public async postLineNote(data: ILineNoteForm) {
+    try {
+      const { repoApiPrefix } = await this.getApiPrefix();
+      const resp: ILineNoteResp = await got.post(`${repoApiPrefix}/line_notes`, {
+        resolveBodyOnly: true,
+        responseType: `json`,
+        searchParams: {
+          access_token: this._session?.accessToken,
+        },
+        form: data,
+      });
+
+      if (resp.code) {
+        return Promise.reject(resp);
+      }
       return resp;
     } catch (e) {
       return Promise.reject(e);
